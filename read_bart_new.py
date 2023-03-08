@@ -12,7 +12,6 @@ import logging
 import os, sys, math
 import torch.nn.functional as F
 from transformers import get_linear_schedule_with_warmup, AdamW
-·
 from evaluate_script import get_raw_scores
 
 
