@@ -13,6 +13,8 @@ import os, sys, math
 import torch.nn.functional as F
 from transformers import get_linear_schedule_with_warmup, AdamW
 import pickle
+import argparse
+
 
 ##  添加了AdamW和linear warm up
 def create_logger(name, silent=False, to_disk=True, log_file=None):
@@ -253,22 +255,6 @@ def eval(model, loader, logger):
             links_rank = data['metadata'][0]['links_rank']
             link_labels = data['metadata'][0]['link_labels']
             labels = data['metadata'][0]['labels']
-            # links_index1, links_index2, scores, row_rank, predicts, gold_row, question
-            # if scores[0]-scores[1] < 0.5:
-            #     links_index1 = [links.index(i) for i in row_links[row_rank[0]]]
-            #     links_index2 = [links.index(i) for i in row_links[row_rank[1]]]
-            #     if links_index1 != links_index2 and 'How many' not in question:
-            #         import pdb; pdb.set_trace()
-
-            # if len(gold_row[0])==0:
-            #     import pdb; pdb.set_trace()
-            #     continue
-            # question, len(gold_row[0]), predicts, gold_row, data['metadata'][0]['answer-text']
-            # if scores[0]-scores[1] < 0.5:
-            #     links_index1 = [links.index(i) for i in row_links[row_rank[0]]]
-            #     links_index2 = [links.index(i) for i in row_links[row_rank[1]]]
-            #     if links_index1 != links_index2 and 'How many' not in question:
-            #         import pdb; pdb.set_trace()
 
             for i in range(len(predicts)):
                 total += 1
@@ -287,10 +273,6 @@ def eval_file(model, loader, logger):
             predicts = torch.argmax(F.softmax(probs,dim=1), dim=1).cpu().tolist()
             predcits_logits = probs.cpu().detach().tolist()
             gold_row = [np.where(item==1)[0].tolist() for item in data['labels'].cpu().numpy()]
-
-
-
-
             metadatas = data['metadata']
             for j, metadata in enumerate(metadatas):
                 metadata['row_pre'] = predicts[j]
@@ -323,16 +305,14 @@ def test_file(model, loader, logger):
 
 def main():
     device = torch.device("cuda")
-    ptm_type = 'deberta'
-    train_data_path = '/home/lfy/UMQM/Data/HybridQA/train.p.json'
-
-    dev_data_path = '/home/lfy/UMQM/Data/HybridQA/dev.p.json'
-    # dev_data_path = '/home/lfy/UMQM/Data/HybridQA/train.toy.json'
-    predict_save_path = '/home/lfy/UMQM/Data/HybridQA/test.row6.json'
+    ptm_type = 'bert-base'
+    train_data_path = './Data/HybridQA/train.p.json'
+    dev_data_path = './Data/HybridQA/dev.p.json'
+    predict_save_path = './Data/HybridQA/dev.row.json'
 
     batch_size = 1
     epoch_nums = 5
-    learning_rate = 2e-6
+    learning_rate = 7e-6
     adam_epsilon = 1e-8
     max_grad_norm = 1
     warmup_steps = 0
@@ -342,8 +322,8 @@ def main():
     is_firststage = 1
     JT = 1
     seed = 2001
-    output_dir = './test1'
-    load_dir = './test1'
+    output_dir = './retrieve1'
+    load_dir = './retrieve1'
     log_file = 'log.txt'
     ckpt_file = 'ckpt.pt'
     load_ckpt_file = 'ckpt.pt'
@@ -351,9 +331,8 @@ def main():
     n_gpu = torch.cuda.device_count()
 
     bert_max_length = 512
-    notice = f'new experiment, delete zero column instance, use label 1 train and dev dataset \
-        for first stage, and use label > 1 and label==1 for second stage.  \
-            is_train={is_train}, is_test={is_test}, is_firststage={is_firststage}, lr={learning_rate}, epoch_num={epoch_nums}'
+
+    notice = f'is_train={is_train}, is_test={is_test}, is_firststage={is_firststage}, lr={learning_rate}, epoch_num={epoch_nums}'
 
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     Path(load_dir).mkdir(parents=True, exist_ok=True)
@@ -374,7 +353,7 @@ def main():
     logger.info(f"train data: {len(train_data)}, dev data: {len(dev_data)}")
     
     if ptm_type == 'bert-large':
-        ptm_path = '/home/lfy/PTM/bert-large-uncased'
+        ptm_path = './PTM/bert-large-uncased'
         logger.info(f"loading PTM model......from {ptm_path}")
         tokenizer = BertTokenizer.from_pretrained(ptm_path)
         bert_model = BertModel.from_pretrained(ptm_path)
@@ -382,7 +361,7 @@ def main():
         tokenizer.add_special_tokens(special_tokens_dict)
         bert_model.resize_token_embeddings(len(tokenizer))
     elif ptm_type == 'bert-base':
-        ptm_path = '/home/lfy/PTM/bert-base-uncased'
+        ptm_path = './PTM/bert-base-uncased'
         logger.info(f"loading PTM model......from {ptm_path}")
         tokenizer = BertTokenizer.from_pretrained(ptm_path)
         bert_model = BertModel.from_pretrained(ptm_path)
@@ -390,7 +369,7 @@ def main():
         tokenizer.add_special_tokens(special_tokens_dict)
         bert_model.resize_token_embeddings(len(tokenizer))
     elif ptm_type == 'roberta':
-        ptm_path = '/home/lfy/PTM/roberta-base'
+        ptm_path = './PTM/roberta-base'
         logger.info(f"loading PTM model......from {ptm_path}")
         tokenizer = RobertaTokenizer.from_pretrained(ptm_path)
         bert_model = RobertaModel.from_pretrained(ptm_path)
@@ -398,7 +377,7 @@ def main():
         tokenizer.add_special_tokens(special_tokens_dict)
         bert_model.resize_token_embeddings(len(tokenizer))
     elif ptm_type == 'deberta':
-        ptm_path = '/home/lfy/PTM/deberta-base'
+        ptm_path = './PTM/deberta-base'
         logger.info(f"loading PTM model......from {ptm_path}")
         tokenizer = AutoTokenizer.from_pretrained(ptm_path)
         bert_model = AutoModel.from_pretrained(ptm_path)
@@ -408,25 +387,12 @@ def main():
 
     if is_firststage:
         if is_train:
-            train_dataset = TypeDataset(tokenizer, train_data[:100], is_train=1, MIL=2, JT=JT)
-        dev_dataset = TypeDataset(tokenizer, dev_data[:100], is_train=0, MIL=2, JT=JT, is_test=is_test)
+            train_dataset = TypeDataset(tokenizer, train_data, is_train=1, MIL=2, JT=JT)
+        dev_dataset = TypeDataset(tokenizer, dev_data, is_train=0, MIL=2, JT=JT, is_test=is_test)
     else:
         if is_train:
             train_dataset = TypeDataset(tokenizer, train_data, 1, 1, JT)
         dev_dataset = TypeDataset(tokenizer, dev_data, 0, 0, JT, is_test)
-
-    # if is_firststage:
-    #     train_dataset_pkl_path = 'cache/train_dataset_stage1.pkl'
-    #     dev_dataset_pkl_path = 'cache/dev_dataset_stage1.pkl'
-    #     if is_train:
-    #         train_dataset = pickle.load(open(train_dataset_pkl_path, 'rb'))
-    #     dev_dataset = pickle.load(open(dev_dataset_pkl_path, 'rb'))
-    # else:
-    #     train_dataset_pkl_path = 'cache/train_dataset_stage2.pkl'
-    #     dev_dataset_pkl_path = 'cache/dev_dataset_stage2.pkl'
-    #     if is_train:
-    #         train_dataset = pickle.load(open(train_dataset_pkl_path, 'rb'))
-    #     dev_dataset = pickle.load(open(dev_dataset_pkl_path, 'rb'))
 
 
     if is_train:

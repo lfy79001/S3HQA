@@ -79,7 +79,7 @@ class TypeDataset(Dataset):
 
         total_data = []
         for data in tqdm(self.ori_data):
-            path = '/home/lfy/UMQM/Data/HybridQA/WikiTables-WithLinks'
+            path = './Data/HybridQA/WikiTables-WithLinks'
             table_id = data['table_id']
             with open('{}/tables_tok/{}.json'.format(path, table_id), 'r') as f:
                 table = json.load(f)  
@@ -342,9 +342,9 @@ def test_eval(tokenizer, model, loader, logger):
 def main():
     device = torch.device("cuda")
     ptm_type = 'bart-large'
-    train_data_path = '/home/lfy/UMQM/Data/HybridQA/train.row55.json'
-    dev_data_path = '/home/lfy/UMQM/Data/HybridQA/test.row55.json'
-    predict_save_path = '/home/lfy/UMQM/Data/HybridQA/test_answers.json'
+    train_data_path = './Data/HybridQA/train.row.json'
+    dev_data_path = './Data/HybridQA/dev.row.json'
+    predict_save_path = './Data/HybridQA/dev_answers.json'
     
     batch_size = 4
     epoch_nums = 10
@@ -352,12 +352,12 @@ def main():
     adam_epsilon = 1e-8
     max_grad_norm = 1
     warmup_steps = 0
-    is_train = 0
-    is_test = 1
+    is_train = 1
+    is_test = 0
     is_firststage = 0
     seed = 2001
-    output_dir = './read_bart_new'
-    load_dir = './read_bart_new'  
+    output_dir = './read1'
+    load_dir = './read1'  
     log_file = 'log.txt'
     ckpt_file = 'ckpt.pt'
     load_ckpt_file = 'ckpt.pt'
@@ -390,7 +390,7 @@ def main():
     logger.info(f"train data: {len(train_data)}, dev data: {len(dev_data)}")
     
     if ptm_type == 'bert-large':
-        ptm_path = '/home/lfy/PTM/bert-large-uncased'
+        ptm_path = './PTM/bert-large-uncased'
         logger.info(f"loading PTM model......from {ptm_path}")
         tokenizer = BertTokenizer.from_pretrained(ptm_path)
         bert_model = BertModel.from_pretrained(ptm_path)
@@ -398,7 +398,7 @@ def main():
         tokenizer.add_special_tokens(special_tokens_dict)
         bert_model.resize_token_embeddings(len(tokenizer))
     elif ptm_type == 'bert-base':
-        ptm_path = '/home/lfy/PTM/bert-base-uncased'
+        ptm_path = './PTM/bert-base-uncased'
         logger.info(f"loading PTM model......from {ptm_path}")
         tokenizer = BertTokenizer.from_pretrained(ptm_path)
         bert_model = BertModel.from_pretrained(ptm_path)
@@ -406,7 +406,7 @@ def main():
         tokenizer.add_special_tokens(special_tokens_dict)
         bert_model.resize_token_embeddings(len(tokenizer))
     elif ptm_type == 'roberta':
-        ptm_path = '/home/lfy/PTM/roberta-large'
+        ptm_path = './PTM/roberta-large'
         logger.info(f"loading PTM model......from {ptm_path}")
         tokenizer = RobertaTokenizer.from_pretrained(ptm_path)
         bert_model = RobertaModel.from_pretrained(ptm_path)
@@ -414,7 +414,7 @@ def main():
         tokenizer.add_special_tokens(special_tokens_dict)
         bert_model.resize_token_embeddings(len(tokenizer))
     elif ptm_type == 'bart-large':
-        ptm_path = '/home/lfy/PTM/bart-large'
+        ptm_path = './PTM/bart-large'
         logger.info(f"loading PTM model......from {ptm_path}")
         tokenizer = BartTokenizer.from_pretrained(ptm_path)
         model = BartForConditionalGeneration.from_pretrained(ptm_path)
