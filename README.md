@@ -8,7 +8,7 @@ transformers==4.21.1
 ```
 
 ## Data prepare
-Put all data in ```./Data/HybridQA```  (Download all data from [hear]())
+Download all data from [hear](). Then `unzip Data.zip`
 Put `bert-large model` in `./PTM/bert-large-uncased` and `bart-large model` in  `./PTM/bart-large`
 
 ## Retrieve stage1  (尝试一下就行)
