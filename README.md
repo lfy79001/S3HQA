@@ -8,7 +8,7 @@ transformers==4.21.1
 ```
 
 ## Data prepare
-Download all data from [hear](https://pan.baidu.com/s/1ex89dyizKoWTP-tDOauhWA). Then `unzip Data.zip`
+Download all data from [hear](https://pan.baidu.com/s/1uGe4Gq-SfMLFoxuTKnW0Eg)（password: 1234) . Then `unzip Data.zip`
 Put `bert-base-uncased model` in `./PTM/bert-base-uncased` and `bart-large model` in  `./PTM/bart-large`
 
 ## Train Model
