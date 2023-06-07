@@ -84,21 +84,21 @@ class RetrieveModel(nn.Module):
 
 
 class TypeDataset(Dataset):
-    def __init__(self, tokenizer, data, is_train, MIL, JT, is_test=0) -> None:
+    def __init__(self, tokenizer, data, is_train, data_use, rerank_link, is_test=0) -> None:
         super(TypeDataset, self).__init__()
         self.tokenizer = tokenizer
         total_data = []
         self.is_train = is_train
         self.is_test = is_test
-        self.MIL = MIL  # 用多少数据进行训练，用全部还是sum=1
-        self.JT = JT   # 为0是普通的link 1是特殊的使用link
-        if MIL == 0:    # 保留全部的row
+        self.data_use = data_use  
+        self.rerank_link = rerank_link   
+        if data_use == 0:    
             total_data = data
-        elif MIL == 1:   # 保留 =1 和 >1 的
+        elif data_use == 1:   
             for item in data:
                 if sum(item['labels']) != 0:
                     total_data.append(item)
-        elif MIL == 2:   # 保留label=1
+        elif data_use == 2:   
             for item in data:
                 if sum(item['labels']) == 1:
                    total_data.append(item)
@@ -130,7 +130,7 @@ class TypeDataset(Dataset):
                     if cell[1] != []:
                         links += cell[1]
                 row_links.append(links.copy())
-                if JT:
+                if rerank_link:
                     links = self.generate_new_links(links, data)
                 for link in links:
                     passage_toks = self.tokenizer.tokenize(requested_document[link])
@@ -305,33 +305,52 @@ def test_file(model, loader, logger):
 
 def main():
     device = torch.device("cuda")
-    ptm_type = 'bert-base'
-    train_data_path = './Data/HybridQA/train.p.json'
-    dev_data_path = './Data/HybridQA/dev.p.json'
-    predict_save_path = './Data/HybridQA/dev.row.json'
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--ptm_type', type=str, default='bert-base', help='Pre-trained model to use')
+    parser.add_argument('--train_data_path', type=str, default='./Data/HybridQA/train.p.json', help='Path to training data')
+    parser.add_argument('--dev_data_path', type=str, default='./Data/HybridQA/dev.p.json', help='Path to development data')
+    parser.add_argument('--predict_save_path', type=str, default='./Data/HybridQA/dev.row.json', help='Path to save predictions')
+    parser.add_argument('--batch_size', type=int, default=1, help='Batch size')
+    parser.add_argument('--epoch_nums', type=int, default=5, help='Number of epochs')
+    parser.add_argument('--learning_rate', type=float, default=7e-6, help='Learning rate')
+    parser.add_argument('--adam_epsilon', type=float, default=1e-8, help='Epsilon for Adam optimizer')
+    parser.add_argument('--warmup_steps', type=int, default=0, help='Number of warmup steps for learning rate scheduler')
+    parser.add_argument('--is_train', type=int, default=1, help='Whether to train the model')
+    parser.add_argument('--is_test', type=int, default=0, help='Whether to test the model')
+    parser.add_argument('--is_generate', type=int, default=0, help='Whether to generate predictions')
+    parser.add_argument('--is_firststage', type=int, default=1, help='Whether to perform first-stage retrieval')
+    parser.add_argument('--rerank_link', type=int, default=1, help='Whether to rerank links')
+    parser.add_argument('--seed', type=int, default=2001, help='Random seed')
+    parser.add_argument('--output_dir', type=str, default='./retrieve1', help='Output directory')
+    parser.add_argument('--load_dir', type=str, default='./retrieve1', help='Directory to load model from')
+    parser.add_argument('--bert_max_length', type=int, default=512, help='Maximum length of input sequence for BERT')
 
-    batch_size = 1
-    epoch_nums = 5
-    learning_rate = 7e-6
-    adam_epsilon = 1e-8
-    max_grad_norm = 1
-    warmup_steps = 0
-    is_train = 1
-    is_test = 0
-    is_generate = 0
-    is_firststage = 1
-    JT = 1
-    seed = 2001
-    output_dir = './retrieve1'
-    load_dir = './retrieve1'
+    args = parser.parse_args()
+
+    ptm_type = args.ptm_type
+    train_data_path = args.train_data_path
+    dev_data_path = args.dev_data_path
+    predict_save_path = args.predict_save_path
+    batch_size = args.batch_size
+    epoch_nums = args.epoch_nums
+    learning_rate = args.learning_rate
+    adam_epsilon = args.adam_epsilon
+    warmup_steps = args.warmup_steps
+    is_train = args.is_train
+    is_test = args.is_test
+    is_generate = args.is_generate
+    is_firststage = args.is_firststage
+    rerank_link = args.rerank_link
+    seed = args.seed
+    output_dir = args.output_dir
+    load_dir = args.load_dir
+    bert_max_length = args.bert_max_length
+
+
     log_file = 'log.txt'
     ckpt_file = 'ckpt.pt'
     load_ckpt_file = 'ckpt.pt'
-    dataset_name = 'hybridqa'   # hotpotqa/hybridqa
     n_gpu = torch.cuda.device_count()
-
-    bert_max_length = 512
-
     notice = f'is_train={is_train}, is_test={is_test}, is_firststage={is_firststage}, lr={learning_rate}, epoch_num={epoch_nums}'
 
     Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -368,14 +387,6 @@ def main():
         special_tokens_dict = {'additional_special_tokens': ['[DOT]']}
         tokenizer.add_special_tokens(special_tokens_dict)
         bert_model.resize_token_embeddings(len(tokenizer))
-    elif ptm_type == 'roberta':
-        ptm_path = './PTM/roberta-base'
-        logger.info(f"loading PTM model......from {ptm_path}")
-        tokenizer = RobertaTokenizer.from_pretrained(ptm_path)
-        bert_model = RobertaModel.from_pretrained(ptm_path)
-        special_tokens_dict = {'additional_special_tokens': ['<dot>']}
-        tokenizer.add_special_tokens(special_tokens_dict)
-        bert_model.resize_token_embeddings(len(tokenizer))
     elif ptm_type == 'deberta':
         ptm_path = './PTM/deberta-base'
         logger.info(f"loading PTM model......from {ptm_path}")
@@ -387,12 +398,12 @@ def main():
 
     if is_firststage:
         if is_train:
-            train_dataset = TypeDataset(tokenizer, train_data, is_train=1, MIL=2, JT=JT)
-        dev_dataset = TypeDataset(tokenizer, dev_data, is_train=0, MIL=2, JT=JT, is_test=is_test)
+            train_dataset = TypeDataset(tokenizer, train_data, is_train=1, data_use=2, rerank_link=rerank_link)
+        dev_dataset = TypeDataset(tokenizer, dev_data, is_train=0, data_use=2, rerank_link=rerank_link, is_test=is_test)
     else:
         if is_train:
-            train_dataset = TypeDataset(tokenizer, train_data, 1, 1, JT)
-        dev_dataset = TypeDataset(tokenizer, dev_data, 0, 0, JT, is_test)
+            train_dataset = TypeDataset(tokenizer, train_data, 1, 1, rerank_link)
+        dev_dataset = TypeDataset(tokenizer, dev_data, 0, 0, rerank_link, is_test)
 
 
     if is_train:

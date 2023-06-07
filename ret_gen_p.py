@@ -79,8 +79,8 @@ class TypeDataset(Dataset):
         self.tokenizer = tokenizer
         self.data = []
         self.is_train = is_train
-        self.MIL = MIL  # 用多少数据进行训练，用全部还是sum=1
-        self.JT = JT   # 为0是普通的row+passage 1是单独训练
+        self.MIL = MIL  
+        self.JT = JT   
         
         for i, data in enumerate(tqdm(input_data)):
             if sum(data['labels']) != 0:
@@ -208,7 +208,7 @@ def main():
     is_train = 0
     seed = 2001
     output_dir = './retrievep_deberta1'
-    load_dir = './retrievep_deberta1'  #  1和2就是调整了JT的方式
+    load_dir = './retrievep_deberta1'  
     log_file = 'logp.txt'
     ckpt_file = 'ckpt.pt'
     load_ckpt_file = 'ckpt.pt'

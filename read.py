@@ -13,6 +13,7 @@ import os, sys, math
 import torch.nn.functional as F
 from transformers import get_linear_schedule_with_warmup, AdamW
 from evaluate_script import get_raw_scores
+import argparse
 
 
 ##  添加了AdamW和linear warm up
@@ -56,22 +57,22 @@ def gelu(x):
 
 
 class TypeDataset(Dataset):
-    def __init__(self, tokenizer, data, is_train, MIL, JT, is_test=0) -> None:
+    def __init__(self, tokenizer, data, is_train, data_use, rerank_link, is_test=0) -> None:
         super(TypeDataset, self).__init__()
         self.tokenizer = tokenizer
         self.ori_data = []
         self.is_train = is_train
         self.is_test = is_test
-        self.JT = JT
-        chaoguo512 = 0
+        self.rerank_link = rerank_link
 
-        if MIL == 0:    # 保留全部的row
+
+        if data_use == 0:    
             self.ori_data = data
-        elif MIL == 1:   # 保留 =1 和 >1 的
+        elif data_use == 1:  
             for item in data:
                 if sum(item['labels']) != 0:
                     self.ori_data.append(item)
-        elif MIL == 2:   # 保留label=1
+        elif data_use == 2:   
             for item in data:
                 if sum(item['labels']) == 1:
                    self.ori_data.append(item)
@@ -141,7 +142,7 @@ class TypeDataset(Dataset):
                     if cell[1] != []:
                         links += cell[1]
                 links_ids = []
-                if JT:
+                if rerank_link:
                     links = self.generate_new_links(links, data)
                 for link in links:
                     passage_toks = self.tokenizer.tokenize(requested_document[link])
@@ -171,7 +172,7 @@ class TypeDataset(Dataset):
                         new_links = list(set(row_links) & set(links_rank))
                     links = [data['links'][item] for item in new_links]
                     links_ids = []
-                    if JT:
+                    if rerank_link:
                         links = self.generate_new_links(links, data)
                     for link in links:
                         passage_toks = self.tokenizer.tokenize(requested_document[link])
@@ -184,7 +185,7 @@ class TypeDataset(Dataset):
                 data['answer_ids'] = [self.tokenizer.eos_token_id] + answer_ids + [self.tokenizer.eos_token_id]
             total_data.append(data)
         self.data = total_data
-        print(f"chaoguo512: {chaoguo512}")
+
 
     def string_tokenizer(self, tokenizer, input_string):
         str_tokens = input_string.split(' ')
@@ -265,7 +266,7 @@ def collate(data, tokenizer, bert_max_length, is_test=0):
         return {"input_ids": input_ids.cuda(), "input_mask":input_mask.cuda(), "metadata":metadata}
 
 
-def train(epoch, tokenizer, model, loader, optimizer, scheduler, logger, is_firststage):
+def train(epoch, tokenizer, model, loader, optimizer, scheduler, logger):
     model.train()
     averge_step = len(loader) // 5
     loss_sum, step = 0, 0
@@ -301,7 +302,6 @@ def eval(tokenizer, model, loader, logger):
                 num_beams = 3,
                 early_stopping=True
             )
-            # data['metadata'][0]['question'], answer, pred_answer, data['metadata'][0]['labels']
             metadata = data['metadata']
             for i, item in enumerate(generated_ids):
                 total += 1
@@ -340,32 +340,48 @@ def test_eval(tokenizer, model, loader, logger):
 
 def main():
     device = torch.device("cuda")
-    ptm_type = 'bart-large'
-    train_data_path = './Data/HybridQA/train.row.json'
-    dev_data_path = './Data/HybridQA/dev.row.json'
-    predict_save_path = './Data/HybridQA/dev_answers.json'
-    
-    batch_size = 4
-    epoch_nums = 10
-    learning_rate = 1e-5
-    adam_epsilon = 1e-8
-    max_grad_norm = 1
-    warmup_steps = 0
-    is_train = 1
-    is_test = 0
-    is_firststage = 0
-    seed = 2001
-    output_dir = './read1'
-    load_dir = './read1'  
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--ptm_type', type=str, default='bart-large', help='Pre-trained model to use')
+    parser.add_argument('--train_data_path', type=str, default='./Data/HybridQA/train.row.json', help='Path to train data')
+    parser.add_argument('--dev_data_path', type=str, default='./Data/HybridQA/dev.row.json', help='Path to dev data')
+    parser.add_argument('--predict_save_path', type=str, default='./Data/HybridQA/dev_answers.json', help='Path to save predictions')
+    parser.add_argument('--batch_size', type=int, default=4, help='Batch size for training')
+    parser.add_argument('--epoch_nums', type=int, default=10, help='Number of epochs for training')
+    parser.add_argument('--learning_rate', type=float, default=1e-5, help='Learning rate for training')
+    parser.add_argument('--adam_epsilon', type=float, default=1e-8, help='Epsilon for Adam optimizer')
+    parser.add_argument('--warmup_steps', type=int, default=0, help='Number of warmup steps for learning rate scheduler')
+    parser.add_argument('--is_train', type=int, default=1, help='Whether to train the model')
+    parser.add_argument('--is_test', type=int, default=0, help='Whether to test the model')
+    parser.add_argument('--seed', type=int, default=2001, help='Random seed for reproducibility')
+    parser.add_argument('--output_dir', type=str, default='./generation_best', help='Output directory for saving model and logs')
+    parser.add_argument('--load_dir', type=str, default='./generation_best', help='Directory for loading model')
+    parser.add_argument('--bert_max_length', type=int, default=1024, help='Maximum length of input sequence for BERT')
+
+    args = parser.parse_args()
+
+    ptm_type = args.ptm_type
+    train_data_path = args.train_data_path
+    dev_data_path = args.dev_data_path
+    predict_save_path = args.predict_save_path
+    batch_size = args.batch_size
+    epoch_nums = args.epoch_nums
+    learning_rate = args.learning_rate
+    adam_epsilon = args.adam_epsilon
+    warmup_steps = args.warmup_steps
+    is_train = args.is_train
+    is_test = args.is_test
+    seed = args.seed
+    output_dir = args.output_dir
+    load_dir = args.load_dir
+    bert_max_length = args.bert_max_length
+
+
+
     log_file = 'log.txt'
     ckpt_file = 'ckpt.pt'
     load_ckpt_file = 'ckpt.pt'
-    dataset_name = 'hybridqa'   # hotpotqa/hybridqa
     n_gpu = torch.cuda.device_count()
-    MIL = 1
-    JT = 1
 
-    bert_max_length = 1024
 
     with open('Data/HybridQA/dev_reference.json', 'r') as f:
         reference = json.load(f)
@@ -380,7 +396,7 @@ def main():
     if n_gpu > 0:
         torch.cuda.manual_seed_all(seed)
         
-    notice = f'is_train={is_train}, is_test={is_test}, is_firststage={is_firststage}, lr={learning_rate}, epoch_num={epoch_nums}, output_dir={output_dir}, load_dir={load_dir}, bert_max_length={bert_max_length}'
+    notice = f'is_train={is_train}, is_test={is_test}, lr={learning_rate}, epoch_num={epoch_nums}, output_dir={output_dir}, load_dir={load_dir}, bert_max_length={bert_max_length}'
     logger.info(notice)
         
     
@@ -388,28 +404,13 @@ def main():
     train_data, dev_data = load_data(train_data_path), load_data(dev_data_path)
     logger.info(f"train data: {len(train_data)}, dev data: {len(dev_data)}")
     
-    if ptm_type == 'bert-large':
-        ptm_path = './PTM/bert-large-uncased'
-        logger.info(f"loading PTM model......from {ptm_path}")
-        tokenizer = BertTokenizer.from_pretrained(ptm_path)
-        bert_model = BertModel.from_pretrained(ptm_path)
-        special_tokens_dict = {'additional_special_tokens': ['[DOT]']}
-        tokenizer.add_special_tokens(special_tokens_dict)
-        bert_model.resize_token_embeddings(len(tokenizer))
-    elif ptm_type == 'bert-base':
+
+    if ptm_type == 'bert-base':
         ptm_path = './PTM/bert-base-uncased'
         logger.info(f"loading PTM model......from {ptm_path}")
         tokenizer = BertTokenizer.from_pretrained(ptm_path)
         bert_model = BertModel.from_pretrained(ptm_path)
         special_tokens_dict = {'additional_special_tokens': ['[DOT]']}
-        tokenizer.add_special_tokens(special_tokens_dict)
-        bert_model.resize_token_embeddings(len(tokenizer))
-    elif ptm_type == 'roberta':
-        ptm_path = './PTM/roberta-large'
-        logger.info(f"loading PTM model......from {ptm_path}")
-        tokenizer = RobertaTokenizer.from_pretrained(ptm_path)
-        bert_model = RobertaModel.from_pretrained(ptm_path)
-        special_tokens_dict = {'additional_special_tokens': ['<dot>']}
         tokenizer.add_special_tokens(special_tokens_dict)
         bert_model.resize_token_embeddings(len(tokenizer))
     elif ptm_type == 'bart-large':
@@ -422,14 +423,9 @@ def main():
         model.resize_token_embeddings(len(tokenizer))
 
 
-    if is_firststage:
-        if is_train:
-            train_dataset = TypeDataset(tokenizer, train_data, is_train=1, MIL=2, JT=JT)
-        dev_dataset = TypeDataset(tokenizer, dev_data, is_train=0, MIL=2, JT=JT, is_test=is_test)
-    else:
-        if is_train:
-            train_dataset = TypeDataset(tokenizer, train_data, 1, 0, JT)
-        dev_dataset = TypeDataset(tokenizer, dev_data, 0, 0, JT, is_test)
+    if is_train:
+        train_dataset = TypeDataset(tokenizer, train_data, is_train=1, data_use=0, rerank_link=1)
+    dev_dataset = TypeDataset(tokenizer, dev_data, is_train=0, data_use=0, rerank_link=1, is_test=is_test)
 
 
     if is_train:
@@ -455,7 +451,7 @@ def main():
 
         for epoch in range(epoch_nums):
             logger.info(f"Training epoch: {epoch}")
-            train(epoch, tokenizer, model, train_loader, optimizer, scheduler, logger, is_firststage)
+            train(epoch, tokenizer, model, train_loader, optimizer, scheduler, logger)
             logger.info("start eval....")
             total_exact, outputs = eval(tokenizer, model, dev_loader, logger)
             scores = get_raw_scores(outputs, reference)
