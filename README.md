@@ -1,6 +1,6 @@
 # S3HQA
 
-This is the project containing source code for the paper [S^3HQA: A Three-Stage Approach for Multi-hop Text-Table Hybrid Question Answering](https://arxiv.org/abs/2305.11725) in __ACL 2023__. 
+This is the project containing source code for the paper [S^3^HQA: A Three-Stage Approach for Multi-hop Text-Table Hybrid Question Answering](https://arxiv.org/abs/2305.11725) in __ACL 2023__. 
 
 ## Requirements
 ```bash
