@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from torch.cuda.amp import autocast, GradScaler
 import numpy as np
 from transformers import BartTokenizer, BartForConditionalGeneration
 from transformers import RobertaTokenizer, RobertaModel, BertTokenizer, BertModel, AutoTokenizer, AutoModel
@@ -15,7 +16,7 @@ from transformers import get_linear_schedule_with_warmup, AdamW
 import pickle
 import argparse
 
-
+os.environ["CUDA_VISIBLE_DEVICES"] = "1,2,3,4,5,6,7"
 ##  添加了AdamW和linear warm up
 def create_logger(name, silent=False, to_disk=True, log_file=None):
     """Logger wrapper
@@ -72,26 +73,27 @@ class RetrieveModel(nn.Module):
         self.projection = FFNLayer(self.hidden_size, self.hidden_size, 1, 0.2)
 
     def forward(self, data):
-        inputs = {"input_ids": data['input_ids'], "attention_mask": data['input_mask']}
+        bs, num_rows, seq_len = data['input_ids'].shape
+        flat_ids = data['input_ids'].view(bs * num_rows, seq_len)
+        flat_mask = data['input_mask'].view(bs * num_rows, seq_len)
+        inputs = {"input_ids": flat_ids, "attention_mask": flat_mask}
         cls_output = self.bert_model(**inputs)[0][:,0,:]
         logits = self.projection(cls_output)
-        bs = data['labels'].size(0)
-        device = cls_output.device
-        probs = logits.squeeze(-1).unsqueeze(0)
-        probs = torch.softmax(probs, -1)
+        logits = logits.view(bs, num_rows, 1).squeeze(-1)
+        probs = torch.softmax(logits, dim=-1)
         return probs
 
 
 
 class TypeDataset(Dataset):
-    def __init__(self, tokenizer, data, is_train, data_use, rerank_link, is_test=0) -> None:
+    def __init__(self, tokenizer, data, is_train, data_use, rerank_link, is_test=0, cache_path=None) -> None:
         super(TypeDataset, self).__init__()
         self.tokenizer = tokenizer
         total_data = []
         self.is_train = is_train
         self.is_test = is_test
         self.data_use = data_use  
-        self.rerank_link = rerank_link   
+        self.rerank_link = rerank_link
         if data_use == 0:    
             total_data = data
         elif data_use == 1:   
@@ -103,9 +105,14 @@ class TypeDataset(Dataset):
                 if sum(item['labels']) == 1:
                    total_data.append(item)
         self.data = []
+        # 添加保存预处理缓存路径
+        if cache_path and os.path.exists(cache_path):
+            with open(cache_path, 'rb') as f:
+                self.data = pickle.load(f)
+            return
         # import pdb; pdb.set_trace()
         for data in tqdm(total_data):
-            path = '/home/lfy/UMQM/Data/HybridQA/WikiTables-WithLinks'
+            path = '/data/jyh/nlp_course_design/S3HQA/Hybridqa_data/WikiTables-WithLinks'
             table_id = data['table_id']
             with open('{}/tables_tok/{}.json'.format(path, table_id), 'r') as f:
                 table = json.load(f)  
@@ -141,6 +148,10 @@ class TypeDataset(Dataset):
             data['input_ids'] = input_ids
             data['row_links'] = row_links
             self.data.append(data)
+        # 保存缓存
+        if cache_path:
+            with open(cache_path, 'wb') as f:
+                pickle.dump(self.data, f)
     
     def generate_new_links(self, links, data):
         if self.is_train:
@@ -204,33 +215,53 @@ def collate(data, tokenizer, bert_max_length, is_test=0):
                 item = item + (max_input_length - len(item)) * [pad_id]
             input_data_i.append(item)
         input_ids.extend(input_data_i)
-        metadata.append(data[i][2])       
-    input_ids = torch.tensor(input_ids)
-    input_mask = torch.where(input_ids==tokenizer.pad_token_id, 0, 1)
+        metadata_item = {k: v for k, v in data[i][2].items() if k not in ['input_ids']}
+        metadata.append(metadata_item)       
+    input_ids = torch.tensor(input_ids).view(bs, max_row_num, -1)
+    input_mask = torch.where(input_ids == tokenizer.pad_token_id, 0, 1)
+    input_mask = input_mask.view(bs, max_row_num, -1)
     if not is_test:
         return {"input_ids": input_ids.cuda(), "input_mask":input_mask.cuda(), "labels":labels.cuda(),\
             "row_mask": row_mask.cuda(), "metadata":metadata, "max_row_num": max_row_num}
     else:
-        return {"input_ids": input_ids.cuda(), "input_mask":input_mask.cuda(),"labels":labels.cuda(),\
-            "row_mask": row_mask.cuda(), "metadata":metadata, "max_row_num": max_row_num}
+        return {
+            "input_ids": input_ids.cuda(), 
+            "input_mask":input_mask.cuda(),
+            "labels":labels.cuda(),\
+            "row_mask": row_mask.cuda(), 
+            "metadata":metadata, 
+            "max_row_num": max_row_num}
 
 
-def train(epoch, tokenizer, model, loader, optimizer, scheduler, logger, is_firststage):
+
+def train(epoch, tokenizer, model, loader, optimizer, scheduler, logger, is_firststage, scaler):
     model.train()
-    averge_step = len(loader) // 12
+    # Ensure averge_step is at least 1 to avoid division by zero
+    averge_step = max(len(loader) // 12, 1)
     loss_sum, step = 0, 0
     for i, data in enumerate(tqdm(loader)):
-        probs = model(data)
-        if not is_firststage:
-            if sum(data['labels'][0]).cpu().item()!=1:
-                data['labels'] = F.softmax(probs + (1 - data['labels'].float()) * -1e20, dim=-1)
-        loss_func = nn.BCEWithLogitsLoss(reduction='sum')
-        loss = loss_func(probs, data['labels'])
+        # print(data.keys())
+        # print(data['input_ids'])
+        # print(data['input_ids'].shape)
+        # print(data['input_mask'])
+        # print(data['input_mask'].shape)
+        # Mixed-precision forward and backward
         optimizer.zero_grad()
-        loss.backward()
+        loss_func = nn.BCEWithLogitsLoss(reduction='sum')
+        with autocast():
+            probs = model(data) # data:[20,512]
+            if not is_firststage and sum(data['labels'][0]).cpu().item()!=1:
+                data['labels'] = F.softmax(probs + (1 - data['labels'].float()) * -1e20, dim=-1)
+            loss = loss_func(probs, data['labels'])
+        scaler.scale(loss).backward()
+        scaler.unscale_(optimizer)
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
-        optimizer.step()
+        scaler.step(optimizer)
+        scaler.update()
         scheduler.step()
+        # Optionally clear cache every few steps
+        #del data, probs, loss
+        torch.cuda.empty_cache()
         loss_sum += loss
         step += 1
         if i % averge_step == 0:
@@ -249,12 +280,12 @@ def eval(model, loader, logger):
             scores, row_rank = torch.sort(probs, dim=1, descending=True)[0][0].cpu().numpy(), torch.sort(probs, dim=1, descending=True)[1][0].cpu().numpy() 
             
             data['metadata'][0]['row_links']
-            question = data['metadata'][0]['question']
-            row_links = data['metadata'][0]['row_links']
-            links = data['metadata'][0]['links']
-            links_rank = data['metadata'][0]['links_rank']
-            link_labels = data['metadata'][0]['link_labels']
-            labels = data['metadata'][0]['labels']
+            # question = data['metadata'][0]['question']
+            # row_links = data['metadata'][0]['row_links']
+            # links = data['metadata'][0]['links']
+            # links_rank = data['metadata'][0]['links_rank']
+            # link_labels = data['metadata'][0]['link_labels']
+            # labels = data['metadata'][0]['labels']
 
             for i in range(len(predicts)):
                 total += 1
@@ -305,11 +336,12 @@ def test_file(model, loader, logger):
 
 def main():
     device = torch.device("cuda")
+    # print(torch.cuda.is_available())
     parser = argparse.ArgumentParser()
     parser.add_argument('--ptm_type', type=str, default='bert-base', help='Pre-trained model to use')
-    parser.add_argument('--train_data_path', type=str, default='./Data/HybridQA/train.p.json', help='Path to training data')
-    parser.add_argument('--dev_data_path', type=str, default='./Data/HybridQA/dev.p.json', help='Path to development data')
-    parser.add_argument('--predict_save_path', type=str, default='./Data/HybridQA/dev.row.json', help='Path to save predictions')
+    parser.add_argument('--train_data_path', type=str, default='Hybridqa_data/train.json', help='Path to training data')
+    parser.add_argument('--dev_data_path', type=str, default='Hybridqa_data/dev.json', help='Path to development data')
+    parser.add_argument('--predict_save_path', type=str, default='./dev.row.json', help='Path to save predictions')
     parser.add_argument('--batch_size', type=int, default=1, help='Batch size')
     parser.add_argument('--epoch_nums', type=int, default=5, help='Number of epochs')
     parser.add_argument('--learning_rate', type=float, default=7e-6, help='Learning rate')
@@ -319,7 +351,7 @@ def main():
     parser.add_argument('--is_test', type=int, default=0, help='Whether to test the model')
     parser.add_argument('--is_generate', type=int, default=0, help='Whether to generate predictions')
     parser.add_argument('--is_firststage', type=int, default=1, help='Whether to perform first-stage retrieval')
-    parser.add_argument('--rerank_link', type=int, default=1, help='Whether to rerank links')
+    parser.add_argument('--rerank_link', type=int, default=0, help='Whether to rerank links')#TODO 这里原来是0
     parser.add_argument('--seed', type=int, default=2001, help='Random seed')
     parser.add_argument('--output_dir', type=str, default='./retrieve1', help='Output directory')
     parser.add_argument('--load_dir', type=str, default='./retrieve1', help='Directory to load model from')
@@ -398,12 +430,12 @@ def main():
 
     if is_firststage:
         if is_train:
-            train_dataset = TypeDataset(tokenizer, train_data, is_train=1, data_use=2, rerank_link=rerank_link)
-        dev_dataset = TypeDataset(tokenizer, dev_data, is_train=0, data_use=2, rerank_link=rerank_link, is_test=is_test)
+            train_dataset = TypeDataset(tokenizer, train_data, is_train=1, data_use=2, rerank_link=rerank_link, cache_path="cache/cached_train_data.pkl")
+        dev_dataset = TypeDataset(tokenizer, dev_data, is_train=0, data_use=2, rerank_link=rerank_link, is_test=is_test, cache_path="cache/cached_dev_data.pkl")
     else:
         if is_train:
-            train_dataset = TypeDataset(tokenizer, train_data, 1, 1, rerank_link)
-        dev_dataset = TypeDataset(tokenizer, dev_data, 0, 0, rerank_link, is_test)
+            train_dataset = TypeDataset(tokenizer, train_data, 1, 1, rerank_link, cache_path="cache/cached_train_data.pkl")
+        dev_dataset = TypeDataset(tokenizer, dev_data, 0, 0, rerank_link, is_test, cache_path="cache/cached_dev_data.pkl")
 
 
     if is_train:
@@ -416,6 +448,8 @@ def main():
     
     model = RetrieveModel(bert_model)
     model.to(device)
+    # Enable gradient checkpointing to save activation memory
+    model.bert_model.gradient_checkpointing_enable()
 
     if not is_firststage and is_train:
         model_load_path = os.path.join(load_dir, load_ckpt_file)
@@ -431,10 +465,10 @@ def main():
         scheduler = get_linear_schedule_with_warmup(
             optimizer, num_warmup_steps=warmup_steps * t_total, num_training_steps=t_total
         )
-
+        scaler = GradScaler()
         for epoch in range(epoch_nums):
             logger.info(f"Training epoch: {epoch}")
-            train(epoch, tokenizer, model, train_loader, optimizer, scheduler, logger, is_firststage)
+            train(epoch, tokenizer, model, train_loader, optimizer, scheduler, logger, is_firststage, scaler)
             logger.info("start eval....")
             acc = eval(model, dev_loader, logger)
             logger.info(f"acc... {acc}")
