@@ -1,7 +1,7 @@
 #CUDA_VISIBLE_DEVICES=8 \
 python retrieve.py \
     --batch_size 1 \
-    --epoch_nums 5 \
+    --epoch_nums 1 \
     --learning_rate 7e-6 \
     --is_train 1 \
     --rerank_link 0 \

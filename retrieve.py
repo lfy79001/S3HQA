@@ -185,6 +185,52 @@ class TypeDataset(Dataset):
             return data['input_ids'], [0]*len(data['input_ids']), data
             
                     
+# def collate(data, tokenizer, bert_max_length, is_test=0):
+#     pad_id = tokenizer.convert_tokens_to_ids(tokenizer.pad_token)
+#     row_num = [len(item[1]) for item in data]
+#     max_row_num = max(row_num)
+#     bs = len(data)
+#     max_input_length = 0
+#     for i in range(bs):
+#         rows_i = data[i][0]
+#         max_row_length_i = max([len(i) for i in rows_i])
+#         if max_row_length_i > bert_max_length:
+#             max_input_length = bert_max_length
+#             break
+#         if max_row_length_i > max_input_length:
+#             max_input_length = max_row_length_i
+  
+#     input_ids = []
+#     row_mask = torch.zeros(bs, max_row_num)
+#     labels = torch.zeros(bs, max_row_num)
+#     metadata = []
+#     for i in range(bs):
+#         row_mask[i][:row_num[i]] = 1
+#         labels[i][:len(data[i][1])] = torch.tensor(data[i][1])
+#         input_data_i = []
+#         for item in data[i][0]:
+#             if len(item) > bert_max_length:
+#                 item = item[:bert_max_length]
+#             else:
+#                 item = item + (max_input_length - len(item)) * [pad_id]
+#             input_data_i.append(item)
+#         input_ids.extend(input_data_i)
+#         metadata_item = {k: v for k, v in data[i][2].items() if k not in ['input_ids']}
+#         metadata.append(metadata_item)       
+#     input_ids = torch.tensor(input_ids).view(bs, max_row_num, -1)
+#     input_mask = torch.where(input_ids == tokenizer.pad_token_id, 0, 1)
+#     input_mask = input_mask.view(bs, max_row_num, -1)
+#     if not is_test:
+#         return {"input_ids": input_ids.cuda(), "input_mask":input_mask.cuda(), "labels":labels.cuda(),\
+#             "row_mask": row_mask.cuda(), "metadata":metadata, "max_row_num": max_row_num}
+#     else:
+#         return {
+#             "input_ids": input_ids.cuda(), 
+#             "input_mask":input_mask.cuda(),
+#             "labels":labels.cuda(),\
+#             "row_mask": row_mask.cuda(), 
+#             "metadata":metadata, 
+#             "max_row_num": max_row_num}
 def collate(data, tokenizer, bert_max_length, is_test=0):
     pad_id = tokenizer.convert_tokens_to_ids(tokenizer.pad_token)
     row_num = [len(item[1]) for item in data]
@@ -231,7 +277,6 @@ def collate(data, tokenizer, bert_max_length, is_test=0):
             "row_mask": row_mask.cuda(), 
             "metadata":metadata, 
             "max_row_num": max_row_num}
-
 
 
 def train(epoch, tokenizer, model, loader, optimizer, scheduler, logger, is_firststage, scaler):

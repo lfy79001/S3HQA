@@ -531,3 +531,67 @@
 05/24/2025 04:24:49 train dataset: 38394
 05/24/2025 04:24:49 dev dataset: 2102
 05/24/2025 04:24:51 Training epoch: 0
+05/24/2025 04:42:18 is_train=1, is_test=0, is_firststage=1, lr=7e-06, epoch_num=5
+05/24/2025 04:42:18 load_dir: retrieve1   output_dir: retrieve1
+05/24/2025 04:42:18 loading data......from Hybridqa_data/train.json and Hybridqa_data/dev.json
+05/24/2025 04:42:19 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:42:19 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:42:19 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:42:19 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:42:19 train data: 62682, dev data: 3466
+05/24/2025 04:42:19 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:42:19 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:42:19 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:44:52 is_train=1, is_test=0, is_firststage=1, lr=7e-06, epoch_num=5
+05/24/2025 04:44:52 load_dir: retrieve1   output_dir: retrieve1
+05/24/2025 04:44:52 loading data......from Hybridqa_data/train.json and Hybridqa_data/dev.json
+05/24/2025 04:44:54 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:44:54 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:44:54 train data: 62682, dev data: 3466
+05/24/2025 04:44:54 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:44:54 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:44:54 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:44:54 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:44:54 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:45:54 train dataset: 38394
+05/24/2025 04:45:54 dev dataset: 2102
+05/24/2025 04:45:56 train dataset: 38394
+05/24/2025 04:45:56 dev dataset: 2102
+05/24/2025 04:59:23 is_train=1, is_test=0, is_firststage=1, lr=7e-06, epoch_num=5
+05/24/2025 04:59:23 load_dir: retrieve1   output_dir: retrieve1
+05/24/2025 04:59:23 loading data......from Hybridqa_data/train.json and Hybridqa_data/dev.json
+05/24/2025 04:59:24 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:59:24 train data: 62682, dev data: 3466
+05/24/2025 04:59:24 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 04:59:56 train dataset: 38394
+05/24/2025 04:59:56 train dataset: 38394
+05/24/2025 04:59:56 dev dataset: 2102
+05/24/2025 04:59:56 dev dataset: 2102
+05/24/2025 05:00:05 Training epoch: 0
+05/24/2025 05:00:05 Training epoch: 0
+05/24/2025 05:00:12 Training Loss [8.75378]
+05/24/2025 05:00:12 Training Loss [11.49792]
+05/24/2025 05:02:01 is_train=1, is_test=0, is_firststage=1, lr=7e-06, epoch_num=1
+05/24/2025 05:02:01 load_dir: retrieve1   output_dir: retrieve1
+05/24/2025 05:02:01 loading data......from Hybridqa_data/train.json and Hybridqa_data/dev.json
+05/24/2025 05:02:02 train data: 62682, dev data: 3466
+05/24/2025 05:02:02 loading PTM model......from ./PTM/bert-base-uncased
+05/24/2025 05:02:28 train dataset: 38394
+05/24/2025 05:02:28 dev dataset: 2102
+05/24/2025 05:02:30 Training epoch: 0
+05/24/2025 05:02:32 Training Loss [14.29908]
+05/24/2025 05:32:05 Training Loss [10.80464]
+05/24/2025 06:01:49 Training Loss [10.61200]
+05/24/2025 06:31:24 Training Loss [10.60631]
+05/24/2025 07:01:16 Training Loss [10.55776]
+05/24/2025 07:31:22 Training Loss [10.66850]
+05/24/2025 08:01:17 Training Loss [10.57656]
+05/24/2025 08:30:52 Training Loss [10.64925]
+05/24/2025 09:00:24 Training Loss [10.60284]
+05/24/2025 09:30:06 Training Loss [10.65445]
+05/24/2025 09:59:37 Training Loss [10.61699]
+05/24/2025 10:29:09 Training Loss [10.61065]
+05/24/2025 10:58:42 Training Loss [10.67909]
+05/24/2025 10:58:47 start eval....
+05/24/2025 11:05:48 acc... 0.8273073263558516
+05/24/2025 11:05:48 saving model...to retrieve1/ckpt.pt

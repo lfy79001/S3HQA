@@ -3,3 +3,12 @@
 /PTM
 /released_data
 /cache
+/cache_reterieve
+/generation_best
+/retrieve1
+/retrieve2
+/read1
+/read2
+retrieve_ddp.py
+retrieve1_ddp.sh
+retrieve1.sh
